@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Noise: resolved",
+    "customer_id": "northstar-labs",
+    "message": "Thanks, everything works now."
+  },
+  {
+    "name": "Authentication outage",
+    "customer_id": "atlas-studio",
+    "message": "None of our users can log in since this morning."
+  },
+  {
+    "name": "Data incident A",
+    "customer_id": "northstar-labs",
+    "message": "Our data imports stopped and are failing with timeout errors."
+  },
+  {
+    "name": "Data incident B",
+    "customer_id": "vertex-retail",
+    "message": "Data imports stopped and are failing with timeout errors for us too."
+  },
+  {
+    "name": "Data incident C",
+    "customer_id": "orbit-commerce",
+    "message": "Our data imports stopped and are failing with repeated timeout errors."
+  },
+  {
+    "name": "Simple configuration",
+    "customer_id": "ember-media",
+    "message": "Where can I change the notification setting for our workspace?"
+  }
+]
