@@ -27,7 +27,10 @@ class MockLLMProvider(LLMProvider):
     async def triage(self, text: str) -> TriageResult:
         started = time.perf_counter()
         t = text.lower()
-        if any(x in t for x in ["thank you", "thanks", "good morning", "works now", "resolved"]):
+        if any(x in t for x in [
+            "thank you", "thanks", "good morning", "works now", "resolved",
+            "спасибо", "доброе утро", "всё работает", "все работает", "решено",
+        ]):
             result = TriageResult(
                 is_issue=False,
                 category=Category.noise,
@@ -40,13 +43,13 @@ class MockLLMProvider(LLMProvider):
             return result
 
         rules = [
-            (Category.authentication, ["login", "log in", "sign in", "token", "password"]),
-            (Category.data_ingestion, ["import", "sync", "data", "ingestion", "update"]),
-            (Category.api, ["api", "429", "rate limit", "endpoint"]),
-            (Category.integration, ["integration", "connector", "connected"]),
-            (Category.performance, ["slow", "latency", "timeout"]),
-            (Category.configuration, ["setting", "configuration", "notification"]),
-            (Category.billing, ["invoice", "billing", "payment"]),
+            (Category.authentication, ["login", "log in", "sign in", "token", "password", "войти", "авторизац", "токен", "парол"]),
+            (Category.data_ingestion, ["import", "sync", "data", "ingestion", "update", "импорт", "синхрон", "данн", "загрузк"]),
+            (Category.api, ["api", "429", "rate limit", "endpoint", "апи", "эндпоинт", "лимит запрос"]),
+            (Category.integration, ["integration", "connector", "connected", "интеграц", "коннектор", "подключен"]),
+            (Category.performance, ["slow", "latency", "timeout", "медлен", "задержк", "тайм-аут", "таймаут"]),
+            (Category.configuration, ["setting", "configuration", "notification", "настрой", "конфигурац", "уведомлен"]),
+            (Category.billing, ["invoice", "billing", "payment", "счёт", "счет", "оплат", "платёж", "платеж"]),
         ]
         category = Category.unknown
         for candidate, words in rules:
@@ -54,8 +57,14 @@ class MockLLMProvider(LLMProvider):
                 category = candidate
                 break
 
-        critical = any(x in t for x in ["all users", "none of our users", "complete outage", "entire company"])
-        high = critical or any(x in t for x in ["6 hours", "stopped", "failing", "failed", "timeout"])
+        critical = any(x in t for x in [
+            "all users", "none of our users", "complete outage", "entire company",
+            "ни один пользователь", "все пользователи", "полный сбой", "вся компания",
+        ])
+        high = critical or any(x in t for x in [
+            "6 hours", "stopped", "failing", "failed", "timeout",
+            "6 часов", "останов", "не работает", "ошибк", "тайм-аут", "таймаут",
+        ])
         severity = Severity.critical if critical else Severity.high if high else Severity.medium
         summary = re.sub(r"\s+", " ", text).strip()[:100]
         result = TriageResult(
@@ -95,7 +104,7 @@ class OpenAICompatibleProvider(LLMProvider):
             "Classify this synthetic support message. Return ONLY compact JSON with keys: "
             "is_issue, category, severity, confidence, summary, decision_reason. "
             "Allowed categories: noise,billing,authentication,data_ingestion,api,performance,integration,configuration,unknown. "
-            "Allowed severities: low,medium,high,critical.\n\nMessage: " + text
+            "Allowed severities: low,medium,high,critical. The input can be English or Russian.\n\nMessage: " + text
         )
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(
