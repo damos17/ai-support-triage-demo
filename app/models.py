@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -67,3 +69,13 @@ class Incident(BaseModel):
     suspected_area: str
     status: str = "potential"
     detected_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class AuditEvent(BaseModel):
+    event_id: str
+    event_type: str
+    message: str
+    case_id: str | None = None
+    customer_id: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
