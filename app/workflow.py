@@ -1,3 +1,4 @@
+from threading import Lock
 from uuid import uuid4
 
 from .db import SQLiteStore
@@ -17,6 +18,7 @@ class SupportWorkflow:
         self.tickets = self.store.load_tickets()
         self.incidents = self.store.load_incidents()
         self.audit_events = self.store.load_audit_events()
+        self._case_id_lock = Lock()
 
     async def process(self, customer_id: str, text: str) -> dict:
         self._audit("message_received", "Incoming support message received", customer_id=customer_id)
@@ -45,21 +47,27 @@ class SupportWorkflow:
                 "telemetry": telemetry,
             }
 
-        case_id = self._next_case_id()
         kb = retrieve(triage.category)
         escalate = triage.severity in {Severity.high, Severity.critical} or kb is None
-        case = Case(
-            case_id=case_id,
-            customer_id=customer_id,
-            title=triage.summary,
-            description=text,
-            category=triage.category,
-            severity=triage.severity,
-            escalation_required=escalate,
-            knowledge_match=kb,
-        )
-        self.cases.append(case)
-        self.store.save_case(case)
+
+        # Keep sequential demo case IDs unique for concurrent requests inside one
+        # application process. A production multi-process deployment should move
+        # identity allocation/uniqueness into the database transaction layer.
+        with self._case_id_lock:
+            case_id = self._next_case_id()
+            case = Case(
+                case_id=case_id,
+                customer_id=customer_id,
+                title=triage.summary,
+                description=text,
+                category=triage.category,
+                severity=triage.severity,
+                escalation_required=escalate,
+                knowledge_match=kb,
+            )
+            self.cases.append(case)
+            self.store.save_case(case)
+
         self._audit(
             "case_created",
             f"Case {case_id} created",
