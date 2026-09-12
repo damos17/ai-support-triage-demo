@@ -10,7 +10,7 @@ from .evaluation import run_evaluation
 from .models import MessageIn
 from .workflow import SupportWorkflow
 
-app = FastAPI(title="AI Support Triage Demo", version="0.4.0")
+app = FastAPI(title="AI Support Triage Demo", version="0.5.0")
 templates = Jinja2Templates(directory="app/templates")
 workflow = SupportWorkflow()
 
@@ -23,7 +23,7 @@ FAVICON_SVG = """<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\"
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "llm_mode": os.getenv("LLM_MODE", "mock"), "version": "0.4.0"}
+    return {"status": "ok", "llm_mode": os.getenv("LLM_MODE", "mock"), "version": "0.5.0"}
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -37,8 +37,18 @@ async def process_message(message: MessageIn):
 
 
 @app.get("/api/cases")
-def cases():
-    return [c.model_dump(mode="json") for c in workflow.cases]
+def cases(
+    status: str | None = Query(default=None, max_length=40),
+    category: str | None = Query(default=None, max_length=60),
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    items = workflow.cases
+    if status:
+        items = [case for case in items if case.status == status]
+    if category:
+        items = [case for case in items if case.category.value == category]
+    items = sorted(items, key=lambda case: case.created_at, reverse=True)[:limit]
+    return [case.model_dump(mode="json") for case in items]
 
 
 @app.get("/api/cases/{case_id}")
