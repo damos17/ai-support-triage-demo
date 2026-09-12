@@ -2,14 +2,14 @@ import json
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from .models import MessageIn
 from .workflow import SupportWorkflow
 
-app = FastAPI(title="AI Support Triage Demo", version="0.2.0")
+app = FastAPI(title="AI Support Triage Demo", version="0.3.0")
 templates = Jinja2Templates(directory="app/templates")
 workflow = SupportWorkflow()
 
@@ -22,7 +22,7 @@ FAVICON_SVG = """<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\"
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "llm_mode": os.getenv("LLM_MODE", "mock"), "version": "0.2.0"}
+    return {"status": "ok", "llm_mode": os.getenv("LLM_MODE", "mock"), "version": "0.3.0"}
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -40,9 +40,27 @@ def cases():
     return [c.model_dump(mode="json") for c in workflow.cases]
 
 
+@app.get("/api/cases/{case_id}")
+def case_detail(case_id: str):
+    detail = workflow.case_detail(case_id)
+    if not detail:
+        raise HTTPException(status_code=404, detail="Case not found")
+    return detail
+
+
 @app.get("/api/incidents")
 def incidents():
     return [i.model_dump(mode="json") for i in workflow.incidents]
+
+
+@app.get("/api/audit")
+def audit(limit: int = Query(default=50, ge=1, le=200)):
+    return workflow.audit(limit=limit)
+
+
+@app.get("/api/telemetry")
+def telemetry():
+    return workflow.telemetry()
 
 
 @app.get("/api/stats")
