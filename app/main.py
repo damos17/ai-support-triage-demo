@@ -8,9 +8,10 @@ from fastapi.templating import Jinja2Templates
 
 from .evaluation import run_evaluation
 from .models import MessageIn
+from .safety import escape_dynamic_text
 from .workflow import SupportWorkflow
 
-app = FastAPI(title="AI Support Triage Demo", version="0.5.0")
+app = FastAPI(title="AI Support Triage Demo", version="0.6.0")
 templates = Jinja2Templates(directory="app/templates")
 workflow = SupportWorkflow()
 
@@ -21,9 +22,13 @@ FAVICON_SVG = """<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\"
 </svg>"""
 
 
+def safe(payload):
+    return escape_dynamic_text(payload)
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "llm_mode": os.getenv("LLM_MODE", "mock"), "version": "0.5.0"}
+    return {"status": "ok", "llm_mode": os.getenv("LLM_MODE", "mock"), "version": "0.6.0"}
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -33,7 +38,7 @@ def favicon():
 
 @app.post("/api/messages")
 async def process_message(message: MessageIn):
-    return await workflow.process(message.customer_id, message.text)
+    return safe(await workflow.process(message.customer_id, message.text))
 
 
 @app.get("/api/cases")
@@ -48,7 +53,7 @@ def cases(
     if category:
         items = [case for case in items if case.category.value == category]
     items = sorted(items, key=lambda case: case.created_at, reverse=True)[:limit]
-    return [case.model_dump(mode="json") for case in items]
+    return safe([case.model_dump(mode="json") for case in items])
 
 
 @app.get("/api/cases/{case_id}")
@@ -56,27 +61,27 @@ def case_detail(case_id: str):
     detail = workflow.case_detail(case_id)
     if not detail:
         raise HTTPException(status_code=404, detail="Case not found")
-    return detail
+    return safe(detail)
 
 
 @app.get("/api/incidents")
 def incidents():
-    return [i.model_dump(mode="json") for i in workflow.incidents]
+    return safe([incident.model_dump(mode="json") for incident in workflow.incidents])
 
 
 @app.get("/api/audit")
 def audit(limit: int = Query(default=50, ge=1, le=200)):
-    return workflow.audit(limit=limit)
+    return safe(workflow.audit(limit=limit))
 
 
 @app.get("/api/telemetry")
 def telemetry():
-    return workflow.telemetry()
+    return safe(workflow.telemetry())
 
 
 @app.get("/api/evaluation")
 async def evaluation():
-    return await run_evaluation(workflow.llm)
+    return safe(await run_evaluation(workflow.llm))
 
 
 @app.get("/api/stats")
@@ -87,14 +92,14 @@ def stats():
 @app.get("/api/scenarios")
 def scenarios():
     path = Path("data/scenarios.json")
-    return json.loads(path.read_text(encoding="utf-8"))
+    return safe(json.loads(path.read_text(encoding="utf-8")))
 
 
 @app.post("/api/tickets/{case_id}/approve")
 def approve_ticket(case_id: str):
     if case_id not in workflow.tickets:
         raise HTTPException(status_code=404, detail="Ticket draft not found")
-    return workflow.approve(case_id).model_dump(mode="json")
+    return safe(workflow.approve(case_id).model_dump(mode="json"))
 
 
 @app.post("/api/reset")
