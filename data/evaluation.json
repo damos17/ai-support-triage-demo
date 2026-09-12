@@ -1,0 +1,58 @@
+[
+  {
+    "id": "noise-resolved-en",
+    "message": "Thanks, everything works now.",
+    "expected_issue": false,
+    "expected_category": "noise",
+    "expected_severity": "low"
+  },
+  {
+    "id": "auth-outage-en",
+    "message": "None of our users can log in since this morning.",
+    "expected_issue": true,
+    "expected_category": "authentication",
+    "expected_severity": "critical"
+  },
+  {
+    "id": "data-timeout-en",
+    "message": "Our data imports stopped and are failing with timeout errors.",
+    "expected_issue": true,
+    "expected_category": "data_ingestion",
+    "expected_severity": "high"
+  },
+  {
+    "id": "config-en",
+    "message": "Where can I change the notification setting for our workspace?",
+    "expected_issue": true,
+    "expected_category": "configuration",
+    "expected_severity": "medium"
+  },
+  {
+    "id": "noise-resolved-ru",
+    "message": "Спасибо, теперь всё работает.",
+    "expected_issue": false,
+    "expected_category": "noise",
+    "expected_severity": "low"
+  },
+  {
+    "id": "auth-outage-ru",
+    "message": "С утра ни один пользователь не может войти в систему.",
+    "expected_issue": true,
+    "expected_category": "authentication",
+    "expected_severity": "critical"
+  },
+  {
+    "id": "data-timeout-ru",
+    "message": "Импорт данных остановился и постоянно падает по тайм-ауту.",
+    "expected_issue": true,
+    "expected_category": "data_ingestion",
+    "expected_severity": "high"
+  },
+  {
+    "id": "config-ru",
+    "message": "Где изменить настройки уведомлений рабочего пространства?",
+    "expected_issue": true,
+    "expected_category": "configuration",
+    "expected_severity": "medium"
+  }
+]
