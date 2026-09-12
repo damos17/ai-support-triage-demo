@@ -2,63 +2,37 @@
 
 [![tests](https://github.com/damos17/ai-support-triage-demo/actions/workflows/tests.yml/badge.svg)](https://github.com/damos17/ai-support-triage-demo/actions/workflows/tests.yml)
 
-A runnable, privacy-safe demonstration of an **AI support operations workflow**: issue detection, structured case creation, knowledge retrieval, escalation, cross-customer incident correlation, ticket drafting, and explicit human approval.
+A runnable, privacy-safe demonstration of an **AI support operations workflow**: issue detection, structured case creation, knowledge retrieval, escalation, cross-customer incident correlation, ticket drafting, persistence, and explicit human approval.
 
 > **Public demo:** all customers, messages, rules, identifiers, and integrations are synthetic. This repository contains no production code or internal company data.
 
-## Why this project exists
+## What it demonstrates
 
-A useful AI system should do more than generate text. It should understand an operational event, maintain state, retrieve context, apply deterministic controls, prepare actions, and know when a human must approve the next step.
-
-This project demonstrates that pattern in a small system that anyone can run locally without an API key.
-
-## Demo flow
+The demo accepts synthetic support messages and moves them through an operational pipeline:
 
 ```text
-Synthetic customer message
-          ↓
-      Triage engine
-    noise / real issue
-          ↓
-    Structured case
-          ↓
-    Knowledge lookup
-          ↓
-     Decision layer
-      solve / escalate
-          ↓
-  Incident correlation ──────┐
-          ↓                   │
-     Ticket draft             │
-          ↓                   │
-   HUMAN APPROVAL             │
-          ↓                   │
-    Mock ticket created       │
-                              │
-3+ related synthetic customers
-          └───────────────────┘
-        Potential incident
+Incoming message
+      ↓
+LLM provider / deterministic mock
+      ↓
+Issue triage + severity
+      ↓
+Structured case
+      ↓
+Synthetic knowledge retrieval
+      ↓
+Decision: resolve / escalate
+      ↓
+Similarity-based incident correlation
+      ↓
+Ticket draft
+      ↓
+EXPLICIT HUMAN APPROVAL
+      ↓
+Mock external ticket ID
 ```
 
-## What you can try
-
-Open the web UI and submit messages such as:
-
-```text
-Thanks, everything works now.
-```
-
-The system classifies it as noise and creates no case.
-
-Then try:
-
-```text
-Since this morning our data imports are failing with timeout errors.
-```
-
-The workflow creates a structured case, retrieves a synthetic knowledge-base recommendation, evaluates escalation, and prepares a mock ticket draft. The ticket remains a **draft until you explicitly approve it**.
-
-To demonstrate incident correlation, submit similar data/import failures from three different customer IDs. The third independent report creates a potential incident.
+The point is not to build another chat interface. The project demonstrates how an LLM can sit inside a controlled, stateful workflow where the surrounding system owns persistence, permissions and consequential actions.
 
 ## Quick start
 
@@ -81,68 +55,139 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-## Mock-first by design
+The interactive API documentation is available at `http://localhost:8000/docs`.
 
-The default mode is deterministic and costs **$0**:
+## Operations dashboard
+
+The web UI includes:
+
+- synthetic scenario presets;
+- live workflow stages;
+- case / severity / confidence output;
+- knowledge-base guidance;
+- potential incident alerts;
+- ticket approval controls;
+- counters for cases, incidents, drafts and approved tickets;
+- one-click three-customer incident demo;
+- resettable demo state.
+
+## Mock mode: zero cost
+
+The default configuration is deterministic and requires no external service:
 
 ```env
 LLM_MODE=mock
 ```
 
-No API key is required. This makes the repository reproducible for reviewers and keeps automated tests stable.
+This keeps the demo reproducible and makes CI deterministic.
 
-The architecture reserves a provider-agnostic interface for an optional OpenAI-compatible LLM adapter. Real-model mode will remain opt-in and configured only through environment variables.
+## Optional real LLM mode
+
+The workflow now uses a provider interface rather than depending directly on one model vendor. An OpenAI-compatible endpoint can be enabled through environment variables:
+
+```env
+LLM_MODE=openai_compatible
+LLM_BASE_URL=https://your-provider.example/v1
+LLM_API_KEY=...
+LLM_MODEL=...
+```
+
+Only the triage boundary is exposed to the provider. Approval policy, persistence and ticket execution remain application responsibilities.
+
+## Persistence
+
+Demo state is stored in SQLite under `data/demo.db` by default. Cases, ticket drafts and incidents survive an application restart.
+
+The database is intentionally ignored by Git so public repository history never accumulates local demo state.
+
+## Incident correlation
+
+v0.2 uses a transparent local correlator based on:
+
+- issue category;
+- independent synthetic customer IDs;
+- token overlap between issue descriptions;
+- a configurable minimum-customer threshold.
+
+This is deliberately lightweight and explainable. It demonstrates the workflow boundary without pretending that simple token overlap is production-grade semantic similarity.
+
+## Human-in-the-loop invariant
+
+The central safety rule is:
+
+```text
+AI may prepare an action.
+AI may not authorize that action.
+```
+
+A ticket can be drafted automatically, but a mock external ticket ID is created only after explicit approval.
 
 ## API
-
-FastAPI exposes:
 
 ```text
 GET  /health
 POST /api/messages
 GET  /api/cases
 GET  /api/incidents
+GET  /api/stats
+GET  /api/scenarios
 POST /api/tickets/{case_id}/approve
+POST /api/reset
 ```
 
-Interactive OpenAPI documentation is available at `/docs` while the app is running.
+## Project structure
+
+```text
+app/
+├── main.py          FastAPI routes and UI entry point
+├── workflow.py      orchestration and state transitions
+├── llm.py           provider interface + mock/OpenAI-compatible providers
+├── db.py            SQLite persistence
+├── knowledge.py     synthetic retrieval boundary
+├── incidents.py     incident correlation
+├── ticketing.py     draft + approval gate
+├── models.py        domain models
+└── templates/       operations dashboard
+
+data/
+└── scenarios.json   synthetic demo scenarios
+
+tests/
+└── test_workflow.py safety, incident and persistence tests
+```
+
+## Tests
+
+```bash
+python -m pytest -q
+```
+
+The suite verifies that:
+
+- conversational noise does not create a case;
+- severe issues create ticket drafts;
+- three related independent customers can trigger a potential incident;
+- no external ticket is created before approval;
+- approved tickets receive only mock IDs;
+- workflow state survives a restart.
+
+GitHub Actions runs the suite on every push and pull request.
 
 ## Engineering decisions
 
-**Deterministic controls around AI.** Severity and approval policy are not delegated blindly to a language model. High-impact actions have explicit application-level gates.
+**Mock-first, real-model optional.** The project can be evaluated without an API key, but the LLM boundary is explicit and replaceable.
 
-**Human-in-the-loop.** Ticket creation is intentionally split into `draft` and `created` states. Generating a plausible action is not permission to execute it.
+**State belongs to the application.** The model does not own case history, incident state, ticket state or authorization.
 
-**Synthetic by construction.** The demo reimplements general architectural patterns from scratch. It does not contain copied production prompts, endpoints, customer information, credentials, internal schemas, or proprietary business rules.
+**Synthetic by construction.** No internal customer names, endpoints, credentials, prompts, production schemas, support conversations or proprietary business rules are included.
 
-**Mock-first provider abstraction.** Reviewers can understand and run the system before configuring a paid model. Real LLM support is an optional capability, not a prerequisite for the demo.
+**Modular instead of monolithic.** Triage, persistence, retrieval, incident correlation and ticketing are separated so each boundary can evolve independently.
 
-**Incident detection is configurable demo logic.** The current demo correlates multiple independent customers by issue category. A later iteration will add local semantic similarity while keeping the example thresholds separate from any production configuration.
+## Current version
 
-## Safety invariant
+**v0.2** adds SQLite persistence, provider abstraction, an optional OpenAI-compatible triage provider, modular services, richer synthetic scenarios, a visual operations dashboard and persistence tests.
 
-The most important test in the repository is simple:
-
-```text
-AI may prepare a ticket.
-AI may not create the ticket without explicit approval.
-```
-
-The test suite also verifies that conversational noise does not create cases and that three independent related reports can trigger a potential incident.
-
-## Run tests
-
-```bash
-pytest -q
-```
-
-GitHub Actions runs the test suite on pushes and pull requests.
-
-## Current scope
-
-**v0.1** intentionally keeps the system small: FastAPI web UI, deterministic mock LLM, in-memory demo state, synthetic knowledge retrieval, incident correlation, mock ticketing, approval gate, Docker, tests, and CI.
-
-Next iterations will add SQLite persistence, a clean provider interface with optional OpenAI-compatible mode, local semantic similarity, richer scenario fixtures, an audit trail, and a more visual operations dashboard.
+Next useful steps: stronger local semantic similarity, audit events, cost/token telemetry, case-detail views and a small evaluation dataset.
 
 ## Related project
 
@@ -152,4 +197,4 @@ This runnable demo complements my sanitized production architecture case study:
 
 ---
 
-Built as a public demonstration of **AI automation, agentic workflows, operational safety, and human-in-the-loop system design**.
+Built as a public demonstration of **AI automation, agentic workflows, operational safety, stateful systems and human-in-the-loop design**.
