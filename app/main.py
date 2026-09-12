@@ -4,7 +4,6 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
-from fastapi.templating import Jinja2Templates
 
 from .evaluation import run_evaluation
 from .models import MessageIn
@@ -12,7 +11,6 @@ from .safety import escape_dynamic_text
 from .workflow import SupportWorkflow
 
 app = FastAPI(title="AI Support Triage Demo", version="0.6.0")
-templates = Jinja2Templates(directory="app/templates")
 workflow = SupportWorkflow()
 
 FAVICON_SVG = """<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\">
@@ -24,6 +22,21 @@ FAVICON_SVG = """<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\"
 
 def safe(payload):
     return escape_dynamic_text(payload)
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
+        "img-src 'self' data:; connect-src 'self'; style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'"
+    )
+    return response
 
 
 @app.get("/health")
@@ -109,5 +122,6 @@ def reset_demo():
 
 
 @app.get("/", response_class=HTMLResponse)
-def dashboard(request: Request):
-    return templates.TemplateResponse(request=request, name="dashboard.html")
+def dashboard():
+    html = Path("app/templates/dashboard.html").read_text(encoding="utf-8")
+    return HTMLResponse(html.replace("v0.5", "v0.6"))
