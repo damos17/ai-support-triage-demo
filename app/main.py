@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
 from .models import MessageIn
@@ -13,10 +13,21 @@ app = FastAPI(title="AI Support Triage Demo", version="0.2.0")
 templates = Jinja2Templates(directory="app/templates")
 workflow = SupportWorkflow()
 
+FAVICON_SVG = """<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\">
+<rect width=\"64\" height=\"64\" rx=\"14\" fill=\"#111b2e\"/>
+<path d=\"M18 18h28v8H26v8h16v8H26v12h-8V18Z\" fill=\"#8ab4ff\"/>
+<circle cx=\"46\" cy=\"46\" r=\"7\" fill=\"#5ee38d\"/>
+</svg>"""
+
 
 @app.get("/health")
 def health():
     return {"status": "ok", "llm_mode": os.getenv("LLM_MODE", "mock"), "version": "0.2.0"}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    return Response(content=FAVICON_SVG, media_type="image/svg+xml")
 
 
 @app.post("/api/messages")
