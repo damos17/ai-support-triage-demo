@@ -6,6 +6,15 @@ A runnable, privacy-safe demonstration of an **AI support operations workflow**:
 
 > **Public demo:** all customers, messages, rules, identifiers, and integrations are synthetic. This repository contains no production code or internal company data.
 
+**FastAPI · SQLite · LLM provider abstraction · evaluation · incident detection · human approval**
+
+- Runs locally with **no API key** in deterministic mock mode
+- Bilingual **EN/RU** scenarios and UI
+- Persistent state and audit trail
+- CI-tested workflow, API, similarity, and evaluation behavior
+- HTML-escaped dynamic UI payloads and hardened Docker build context
+- MIT licensed
+
 ## What it demonstrates
 
 ```text
@@ -32,9 +41,9 @@ EXPLICIT HUMAN APPROVAL
 Mock external ticket ID
 ```
 
-Every meaningful transition is also written to a persistent audit trail. Provider latency and token usage are captured at the triage boundary when available.
+Every meaningful transition is written to a persistent audit trail. Provider latency and token usage are captured at the triage boundary when available.
 
-The point is not to build another chat interface. The project demonstrates how an LLM can sit inside a controlled, stateful workflow where the surrounding system owns persistence, observability, permissions, evaluation and consequential actions.
+The point is not to build another chat interface. The project demonstrates how an LLM can sit inside a controlled, stateful workflow where the surrounding application owns persistence, observability, permissions, evaluation, and consequential actions.
 
 ## Quick start
 
@@ -51,7 +60,7 @@ uvicorn app.main:app --reload
 
 Open `http://localhost:8000`.
 
-The interactive API documentation is available at `http://localhost:8000/docs`.
+Interactive API docs: `http://localhost:8000/docs`.
 
 ### Docker
 
@@ -71,7 +80,7 @@ The bilingual EN/RU web UI includes:
 - knowledge-base guidance;
 - potential incident alerts;
 - explicit ticket approval controls;
-- counters for cases, incidents, drafts and approved tickets;
+- counters for cases, incidents, drafts, and approved tickets;
 - clickable recent-case navigation;
 - case-detail view;
 - persistent audit trail;
@@ -82,17 +91,17 @@ The bilingual EN/RU web UI includes:
 
 ## Mock mode: zero cost
 
-The default configuration is deterministic and requires no external service:
+Default configuration:
 
 ```env
 LLM_MODE=mock
 ```
 
-The mock understands the bundled English and Russian scenarios. It keeps the demo reproducible and makes CI deterministic.
+No external service or API key is required. The deterministic mock understands the bundled English and Russian scenarios and keeps CI reproducible.
 
 ## Optional real LLM mode
 
-The workflow uses a provider interface rather than depending directly on one model vendor. An OpenAI-compatible endpoint can be enabled through environment variables:
+The workflow depends on a provider interface rather than one model vendor. An OpenAI-compatible endpoint can be enabled with:
 
 ```env
 LLM_MODE=openai_compatible
@@ -101,30 +110,30 @@ LLM_API_KEY=...
 LLM_MODEL=...
 ```
 
-Only the triage boundary is exposed to the provider. Approval policy, persistence and ticket execution remain application responsibilities.
+Only the triage boundary is delegated to the provider. Approval policy, persistence, incident state, and ticket execution remain application responsibilities.
 
-If the provider returns standard usage metadata, prompt/completion token counts are recorded. The demo deliberately does **not** invent a dollar cost for arbitrary compatible providers because pricing is provider- and model-specific.
+If standard usage metadata is returned, prompt/completion token counts are recorded. The demo deliberately does **not** invent a dollar cost for arbitrary compatible providers because pricing is provider- and model-specific.
 
 ## Persistence and auditability
 
-Demo state is stored in SQLite under `data/demo.db` by default. Cases, ticket drafts, incidents and audit events survive an application restart.
+Demo state is stored in SQLite under `data/demo.db` by default. Cases, ticket drafts, incidents, and audit events survive an application restart.
 
-Audit events cover the main workflow transitions, including message receipt, triage, case creation, knowledge lookup, ticket drafting, incident detection, and explicit approval.
+Audit events cover message receipt, triage, case creation, knowledge lookup, ticket drafting, incident detection, and explicit approval.
 
-The database is ignored by Git so public repository history never accumulates local demo state.
+Local database files are ignored by Git and Docker build context.
 
 ## Incident correlation
 
 The project exposes a `SimilarityEngine` boundary.
 
-The default implementation is `TokenCosineSimilarity`: a local cosine-similarity engine over normalized token-frequency vectors. The incident detector combines:
+The default implementation is `TokenCosineSimilarity`: local cosine similarity over normalized token-frequency vectors. The incident detector combines:
 
 - issue category;
 - independent synthetic customer IDs;
 - configurable similarity threshold;
 - configurable minimum-customer threshold.
 
-The default engine is deliberately local, dependency-light and explainable. It is **not** presented as production-grade semantic embeddings. The abstraction exists so a stronger embeddings-based implementation can replace it without changing incident orchestration.
+The default engine is deliberately dependency-light and explainable. It is **not** presented as production-grade semantic embeddings. A stronger embeddings implementation can replace it without changing incident orchestration.
 
 ## Evaluation
 
@@ -141,25 +150,23 @@ The report exposes:
 - category confusion entries when misclassifications occur;
 - row-level expected vs actual output.
 
-Run the regression suite:
+Run regression tests:
 
 ```bash
 python -m pytest -q
 ```
 
-Or inspect the current provider through:
+Or evaluate the current provider through:
 
 ```text
 GET /api/evaluation
 ```
 
-The UI also exposes an explicit **Run evaluation** action. It is not executed automatically because a real provider can incur API calls and cost.
+The UI also exposes an explicit **Run evaluation** action. It is never executed silently because a real provider may incur API calls and cost.
 
-The bundled dataset is intentionally small. It is a reproducible regression boundary, not a claim of real-world model quality.
+The bundled dataset is intentionally small. It is a reproducible regression boundary, **not a claim of real-world model quality**.
 
 ## Human-in-the-loop invariant
-
-The central safety rule is:
 
 ```text
 AI may prepare an action.
@@ -167,6 +174,21 @@ AI may not authorize that action.
 ```
 
 A ticket can be drafted automatically, but a mock external ticket ID is created only after explicit approval.
+
+## Security and deployment boundaries
+
+v0.6 adds portfolio hardening around the public demo:
+
+- dynamic API strings are HTML-escaped before browser rendering;
+- common browser security headers are set;
+- `.dockerignore` excludes local secrets, databases, virtual environments, Git metadata, and editor files;
+- request payloads have bounded input lengths;
+- case-ID allocation is guarded against concurrent requests within one application process;
+- API-level integration tests cover the main workflow and security behavior.
+
+This is still a **local synthetic demo**, not a production multi-user service. Mutation endpoints intentionally have no authentication so the project stays easy to evaluate locally. Before public internet deployment, add authenticated authorization, session/tenant isolation, rate limiting, production database transactions, migrations, and deployment-specific monitoring.
+
+See [`SECURITY.md`](SECURITY.md) for the explicit boundary.
 
 ## API
 
@@ -189,7 +211,7 @@ POST /api/reset
 
 ```text
 app/
-├── main.py          FastAPI routes and UI entry point
+├── main.py          FastAPI routes, response hardening, UI entry point
 ├── workflow.py      orchestration, audit and state transitions
 ├── llm.py           provider interface + telemetry capture
 ├── db.py            SQLite persistence
@@ -197,6 +219,7 @@ app/
 ├── incidents.py     incident correlation orchestration
 ├── similarity.py    pluggable similarity boundary
 ├── evaluation.py    synthetic evaluation runner + metrics
+├── safety.py        dynamic response escaping for browser rendering
 ├── ticketing.py     draft + approval gate
 ├── models.py        domain + audit models
 └── templates/       bilingual operations dashboard
@@ -206,40 +229,45 @@ data/
 └── evaluation.json  bilingual evaluation dataset
 
 tests/
+├── test_api.py
 ├── test_workflow.py
 ├── test_similarity.py
 └── test_evaluation.py
 ```
 
-## Tests
+## Tests and CI
 
 ```bash
 python -m pytest -q
 ```
 
-The suite verifies workflow safety, persistence, auditability, telemetry, similarity behavior, and the full public bilingual evaluation dataset. GitHub Actions also performs a FastAPI version/import smoke check on every push and pull request.
+The suite covers workflow safety, persistence, auditability, telemetry, similarity behavior, the public bilingual evaluation dataset, API flows, 404 behavior, browser security headers, and escaping of dynamic message content.
+
+GitHub Actions runs the suite plus a FastAPI version/import smoke check on every push and pull request.
 
 ## Engineering decisions
 
-**Mock-first, real-model optional.** The project can be evaluated without an API key, but the LLM boundary is explicit and replaceable.
+**Mock-first, real-model optional.** The project can be evaluated without an API key, while the LLM boundary stays explicit and replaceable.
 
-**State belongs to the application.** The model does not own case history, incident state, ticket state or authorization.
+**State belongs to the application.** The model does not own case history, incident state, ticket state, or authorization.
 
-**Observability is part of the workflow.** Audit events and provider telemetry are application data, not console-only diagnostics.
+**Observability is application data.** Audit events and provider telemetry are persistent workflow data, not console-only diagnostics.
 
-**Evaluation is explicit.** A small versioned dataset makes quality checks repeatable instead of relying only on hand-picked UI examples.
+**Evaluation is explicit.** A versioned dataset makes quality checks repeatable instead of relying only on hand-picked UI examples.
 
-**Similarity is replaceable.** Incident orchestration depends on a similarity interface rather than a hard-coded lexical algorithm.
+**Similarity is replaceable.** Incident orchestration depends on a similarity interface instead of a hard-coded lexical algorithm.
 
-**Evaluation does not run silently.** In the UI it is user-triggered, so switching to a paid provider does not create surprise model calls.
+**Safety boundaries are visible.** The README and `SECURITY.md` distinguish local-demo choices from production requirements rather than pretending the demo is fully production-ready.
 
-**Synthetic by construction.** No internal customer names, endpoints, credentials, prompts, production schemas, support conversations or proprietary business rules are included.
+**Synthetic by construction.** No internal customer names, endpoints, credentials, prompts, production schemas, support conversations, or proprietary business rules are included.
 
 ## Current version
 
-**v0.5** expands the bilingual evaluation set to 16 cases, adds per-language/per-category metrics and category confusion reporting, introduces filtered recent-case navigation, and surfaces evaluation directly in the operations dashboard.
+**v0.6 — Portfolio Hardening**
 
-Next useful steps: optional embeddings-based similarity, provider-specific cost configuration, a larger adversarial evaluation set, and richer incident detail views.
+Adds API integration tests, dynamic response escaping for the dashboard, browser security headers, Docker build-context hardening, single-process concurrent case-ID protection, explicit deployment/security boundaries, and an MIT license.
+
+The next step is not feature expansion. It is manual end-to-end verification, a final public-data/security sweep, and one clean dashboard screenshot for the portfolio.
 
 ## Related project
 
@@ -249,4 +277,4 @@ This runnable demo complements my sanitized production architecture case study:
 
 ---
 
-Built as a public demonstration of **AI automation, agentic workflows, operational safety, observability, evaluation, stateful systems and human-in-the-loop design**.
+Built as a public demonstration of **AI automation, agentic workflows, operational safety, observability, evaluation, stateful systems, and human-in-the-loop design**.
