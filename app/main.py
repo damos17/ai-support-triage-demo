@@ -6,10 +6,11 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from .evaluation import run_evaluation
 from .models import MessageIn
 from .workflow import SupportWorkflow
 
-app = FastAPI(title="AI Support Triage Demo", version="0.3.0")
+app = FastAPI(title="AI Support Triage Demo", version="0.4.0")
 templates = Jinja2Templates(directory="app/templates")
 workflow = SupportWorkflow()
 
@@ -22,7 +23,7 @@ FAVICON_SVG = """<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\"
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "llm_mode": os.getenv("LLM_MODE", "mock"), "version": "0.3.0"}
+    return {"status": "ok", "llm_mode": os.getenv("LLM_MODE", "mock"), "version": "0.4.0"}
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -61,6 +62,11 @@ def audit(limit: int = Query(default=50, ge=1, le=200)):
 @app.get("/api/telemetry")
 def telemetry():
     return workflow.telemetry()
+
+
+@app.get("/api/evaluation")
+async def evaluation():
+    return await run_evaluation(workflow.llm)
 
 
 @app.get("/api/stats")
