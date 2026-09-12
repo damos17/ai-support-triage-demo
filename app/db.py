@@ -3,7 +3,7 @@ import sqlite3
 from pathlib import Path
 from typing import Iterable
 
-from .models import Case, Incident, TicketDraft
+from .models import AuditEvent, Case, Incident, TicketDraft
 
 
 class SQLiteStore:
@@ -39,6 +39,10 @@ class SQLiteStore:
                     incident_id TEXT PRIMARY KEY,
                     payload TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS audit_events (
+                    event_id TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL
+                );
                 """
             )
 
@@ -51,6 +55,9 @@ class SQLiteStore:
     def save_incident(self, incident: Incident) -> None:
         self._upsert("incidents", "incident_id", incident.incident_id, incident.model_dump(mode="json"))
 
+    def save_audit_event(self, event: AuditEvent) -> None:
+        self._upsert("audit_events", "event_id", event.event_id, event.model_dump(mode="json"))
+
     def load_cases(self) -> list[Case]:
         return [Case.model_validate(x) for x in self._all("cases")]
 
@@ -61,11 +68,16 @@ class SQLiteStore:
     def load_incidents(self) -> list[Incident]:
         return [Incident.model_validate(x) for x in self._all("incidents")]
 
+    def load_audit_events(self) -> list[AuditEvent]:
+        events = [AuditEvent.model_validate(x) for x in self._all("audit_events")]
+        return sorted(events, key=lambda event: event.created_at)
+
     def clear(self) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM cases")
             conn.execute("DELETE FROM tickets")
             conn.execute("DELETE FROM incidents")
+            conn.execute("DELETE FROM audit_events")
 
     def _upsert(self, table: str, key_name: str, key: str, payload: dict) -> None:
         with self._connect() as conn:
