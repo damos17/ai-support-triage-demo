@@ -2,7 +2,7 @@
 
 [![tests](https://github.com/damos17/ai-support-triage-demo/actions/workflows/tests.yml/badge.svg)](https://github.com/damos17/ai-support-triage-demo/actions/workflows/tests.yml)
 
-A runnable, privacy-safe demonstration of an **AI support operations workflow**: issue detection, structured case creation, knowledge retrieval, escalation, cross-customer incident correlation, ticket drafting, persistence, auditability, telemetry, and explicit human approval.
+A runnable, privacy-safe demonstration of an **AI support operations workflow**: issue detection, structured case creation, knowledge retrieval, escalation, cross-customer incident correlation, ticket drafting, persistence, auditability, telemetry, evaluation, and explicit human approval.
 
 > **Public demo:** all customers, messages, rules, identifiers, and integrations are synthetic. This repository contains no production code or internal company data.
 
@@ -21,7 +21,9 @@ Synthetic knowledge retrieval
       ↓
 Decision: resolve / escalate
       ↓
-Similarity-based incident correlation
+Pluggable similarity engine
+      ↓
+Cross-customer incident correlation
       ↓
 Ticket draft
       ↓
@@ -32,7 +34,7 @@ Mock external ticket ID
 
 Every meaningful transition is also written to a persistent audit trail. Provider latency and token usage are captured at the triage boundary when available.
 
-The point is not to build another chat interface. The project demonstrates how an LLM can sit inside a controlled, stateful workflow where the surrounding system owns persistence, observability, permissions and consequential actions.
+The point is not to build another chat interface. The project demonstrates how an LLM can sit inside a controlled, stateful workflow where the surrounding system owns persistence, observability, permissions, evaluation and consequential actions.
 
 ## Quick start
 
@@ -120,14 +122,41 @@ The database is ignored by Git so public repository history never accumulates lo
 
 ## Incident correlation
 
-The current local correlator uses:
+v0.4 introduces an explicit `SimilarityEngine` boundary.
+
+The default implementation is `TokenCosineSimilarity`: a local cosine-similarity engine over normalized token-frequency vectors. The incident detector combines:
 
 - issue category;
 - independent synthetic customer IDs;
-- token overlap between issue descriptions;
-- a configurable minimum-customer threshold.
+- configurable similarity threshold;
+- configurable minimum-customer threshold.
 
-This is deliberately lightweight and explainable. It demonstrates the workflow boundary without pretending that simple lexical overlap is production-grade semantic similarity.
+The default engine is deliberately local, dependency-light and explainable. It is **not** presented as production-grade semantic embeddings. The abstraction exists so a stronger embeddings-based implementation can replace it without changing incident orchestration.
+
+## Evaluation
+
+The repository contains a small synthetic bilingual evaluation set in `data/evaluation.json`.
+
+It measures:
+
+- issue / non-issue accuracy;
+- category accuracy;
+- severity accuracy;
+- exact row-level pass rate.
+
+Run the automated regression suite:
+
+```bash
+python -m pytest -q
+```
+
+Or inspect the current provider against the evaluation set through:
+
+```text
+GET /api/evaluation
+```
+
+The bundled dataset is intentionally small. It is a regression/evaluation boundary, not a claim of real-world model quality.
 
 ## Human-in-the-loop invariant
 
@@ -150,6 +179,7 @@ GET  /api/cases/{case_id}
 GET  /api/incidents
 GET  /api/audit
 GET  /api/telemetry
+GET  /api/evaluation
 GET  /api/stats
 GET  /api/scenarios
 POST /api/tickets/{case_id}/approve
@@ -165,16 +195,21 @@ app/
 ├── llm.py           provider interface + telemetry capture
 ├── db.py            SQLite persistence
 ├── knowledge.py     synthetic retrieval boundary
-├── incidents.py     incident correlation
+├── incidents.py     incident correlation orchestration
+├── similarity.py    pluggable similarity boundary
+├── evaluation.py    synthetic evaluation runner
 ├── ticketing.py     draft + approval gate
 ├── models.py        domain + audit models
 └── templates/       bilingual operations dashboard
 
 data/
-└── scenarios.json   synthetic demo scenarios
+├── scenarios.json   synthetic demo scenarios
+└── evaluation.json  bilingual evaluation dataset
 
 tests/
-└── test_workflow.py workflow, safety, telemetry and persistence tests
+├── test_workflow.py
+├── test_similarity.py
+└── test_evaluation.py
 ```
 
 ## Tests
@@ -192,7 +227,9 @@ The suite verifies that:
 - approval is recorded in the audit trail;
 - case-detail data includes related workflow state;
 - telemetry aggregates provider calls;
-- cases and audit events survive a restart.
+- cases and audit events survive a restart;
+- related issue descriptions score above unrelated descriptions;
+- the public bilingual evaluation set stays regression-tested.
 
 GitHub Actions runs the tests and a FastAPI import smoke check on every push and pull request.
 
@@ -204,15 +241,17 @@ GitHub Actions runs the tests and a FastAPI import smoke check on every push and
 
 **Observability is part of the workflow.** Audit events and provider telemetry are application data, not console-only diagnostics.
 
-**Synthetic by construction.** No internal customer names, endpoints, credentials, prompts, production schemas, support conversations or proprietary business rules are included.
+**Evaluation is explicit.** A small versioned dataset makes quality checks repeatable instead of relying only on hand-picked UI examples.
 
-**Modular instead of monolithic.** Triage, persistence, retrieval, incident correlation and ticketing are separated so each boundary can evolve independently.
+**Similarity is replaceable.** Incident orchestration depends on a similarity interface rather than a hard-coded lexical algorithm.
+
+**Synthetic by construction.** No internal customer names, endpoints, credentials, prompts, production schemas, support conversations or proprietary business rules are included.
 
 ## Current version
 
-**v0.3** adds a persistent audit trail, LLM telemetry, case-detail API/UI, bilingual EN/RU operations UI, Russian mock scenarios, and a CI application smoke check.
+**v0.4** adds a pluggable similarity engine, local cosine similarity for incident correlation, a bilingual evaluation dataset, a reusable evaluation runner, `/api/evaluation`, and regression tests for similarity and triage quality.
 
-Next useful steps: a stronger similarity abstraction, an evaluation dataset with measurable triage quality, richer case navigation, and optional provider-specific cost configuration.
+Next useful steps: optional embeddings-based similarity, richer evaluation metrics/confusion reporting, provider-specific cost configuration, and deeper case navigation.
 
 ## Related project
 
@@ -222,4 +261,4 @@ This runnable demo complements my sanitized production architecture case study:
 
 ---
 
-Built as a public demonstration of **AI automation, agentic workflows, operational safety, observability, stateful systems and human-in-the-loop design**.
+Built as a public demonstration of **AI automation, agentic workflows, operational safety, observability, evaluation, stateful systems and human-in-the-loop design**.
