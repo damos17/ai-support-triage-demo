@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import os
 import re
+import time
 
 import httpx
 
@@ -9,6 +10,9 @@ from .models import Category, Severity, TriageResult
 
 
 class LLMProvider(ABC):
+    def __init__(self) -> None:
+        self.last_telemetry: dict = {}
+
     @abstractmethod
     async def triage(self, text: str) -> TriageResult:
         raise NotImplementedError
@@ -17,10 +21,14 @@ class LLMProvider(ABC):
 class MockLLMProvider(LLMProvider):
     """Deterministic provider used for the zero-cost public demo."""
 
+    def __init__(self) -> None:
+        super().__init__()
+
     async def triage(self, text: str) -> TriageResult:
+        started = time.perf_counter()
         t = text.lower()
         if any(x in t for x in ["thank you", "thanks", "good morning", "works now", "resolved"]):
-            return TriageResult(
+            result = TriageResult(
                 is_issue=False,
                 category=Category.noise,
                 severity=Severity.low,
@@ -28,6 +36,8 @@ class MockLLMProvider(LLMProvider):
                 summary="No active technical issue",
                 decision_reason="The message is conversational or reports that the issue is resolved.",
             )
+            self._set_telemetry(started)
+            return result
 
         rules = [
             (Category.authentication, ["login", "log in", "sign in", "token", "password"]),
@@ -48,7 +58,7 @@ class MockLLMProvider(LLMProvider):
         high = critical or any(x in t for x in ["6 hours", "stopped", "failing", "failed", "timeout"])
         severity = Severity.critical if critical else Severity.high if high else Severity.medium
         summary = re.sub(r"\s+", " ", text).strip()[:100]
-        return TriageResult(
+        result = TriageResult(
             is_issue=True,
             category=category,
             severity=severity,
@@ -56,6 +66,18 @@ class MockLLMProvider(LLMProvider):
             summary=summary,
             decision_reason="The message describes an active service or configuration problem.",
         )
+        self._set_telemetry(started)
+        return result
+
+    def _set_telemetry(self, started: float) -> None:
+        self.last_telemetry = {
+            "provider": "mock",
+            "model": "deterministic-rules",
+            "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "estimated_cost_usd": 0.0,
+        }
 
 
 @dataclass
@@ -64,7 +86,11 @@ class OpenAICompatibleProvider(LLMProvider):
     api_key: str
     model: str
 
+    def __post_init__(self) -> None:
+        LLMProvider.__init__(self)
+
     async def triage(self, text: str) -> TriageResult:
+        started = time.perf_counter()
         prompt = (
             "Classify this synthetic support message. Return ONLY compact JSON with keys: "
             "is_issue, category, severity, confidence, summary, decision_reason. "
@@ -86,6 +112,16 @@ class OpenAICompatibleProvider(LLMProvider):
             response.raise_for_status()
             data = response.json()
             content = data["choices"][0]["message"]["content"]
+
+        usage = data.get("usage") or {}
+        self.last_telemetry = {
+            "provider": "openai_compatible",
+            "model": data.get("model") or self.model,
+            "latency_ms": round((time.perf_counter() - started) * 1000, 2),
+            "input_tokens": usage.get("prompt_tokens"),
+            "output_tokens": usage.get("completion_tokens"),
+            "estimated_cost_usd": None,
+        }
         return TriageResult.model_validate_json(content)
 
 
