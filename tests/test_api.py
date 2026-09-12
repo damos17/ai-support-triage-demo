@@ -14,7 +14,7 @@ def build_client(tmp_path) -> TestClient:
     return TestClient(main_module.app)
 
 
-def test_health_dashboard_and_favicon(tmp_path):
+def test_health_dashboard_favicon_and_security_headers(tmp_path):
     client = build_client(tmp_path)
 
     health = client.get("/health")
@@ -24,6 +24,10 @@ def test_health_dashboard_and_favicon(tmp_path):
     dashboard = client.get("/")
     assert dashboard.status_code == 200
     assert "AI Support Triage Agent" in dashboard.text
+    assert "v0.6" in dashboard.text
+    assert dashboard.headers["x-content-type-options"] == "nosniff"
+    assert dashboard.headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in dashboard.headers["content-security-policy"]
 
     favicon = client.get("/favicon.ico")
     assert favicon.status_code == 200
