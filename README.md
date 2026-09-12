@@ -72,9 +72,11 @@ The bilingual EN/RU web UI includes:
 - potential incident alerts;
 - explicit ticket approval controls;
 - counters for cases, incidents, drafts and approved tickets;
+- clickable recent-case navigation;
 - case-detail view;
 - persistent audit trail;
 - LLM provider / latency / token / known-cost telemetry;
+- explicit evaluation runner with visible quality metrics;
 - one-click three-customer incident demo;
 - resettable demo state.
 
@@ -107,22 +109,13 @@ If the provider returns standard usage metadata, prompt/completion token counts 
 
 Demo state is stored in SQLite under `data/demo.db` by default. Cases, ticket drafts, incidents and audit events survive an application restart.
 
-Audit events cover the main workflow transitions, including:
-
-- message received;
-- triage completed;
-- non-issue closed;
-- case created;
-- knowledge hit / miss;
-- ticket drafted;
-- potential incident detected;
-- ticket explicitly approved.
+Audit events cover the main workflow transitions, including message receipt, triage, case creation, knowledge lookup, ticket drafting, incident detection, and explicit approval.
 
 The database is ignored by Git so public repository history never accumulates local demo state.
 
 ## Incident correlation
 
-v0.4 introduces an explicit `SimilarityEngine` boundary.
+The project exposes a `SimilarityEngine` boundary.
 
 The default implementation is `TokenCosineSimilarity`: a local cosine-similarity engine over normalized token-frequency vectors. The incident detector combines:
 
@@ -135,28 +128,34 @@ The default engine is deliberately local, dependency-light and explainable. It i
 
 ## Evaluation
 
-The repository contains a small synthetic bilingual evaluation set in `data/evaluation.json`.
+The repository contains a **16-row synthetic bilingual evaluation set** in `data/evaluation.json`: eight English and eight Russian cases covering noise, authentication, data ingestion, configuration, API, integration, performance, and billing.
 
-It measures:
+The report exposes:
 
+- exact row-level pass rate;
 - issue / non-issue accuracy;
 - category accuracy;
 - severity accuracy;
-- exact row-level pass rate.
+- per-language metrics;
+- per-category metrics;
+- category confusion entries when misclassifications occur;
+- row-level expected vs actual output.
 
-Run the automated regression suite:
+Run the regression suite:
 
 ```bash
 python -m pytest -q
 ```
 
-Or inspect the current provider against the evaluation set through:
+Or inspect the current provider through:
 
 ```text
 GET /api/evaluation
 ```
 
-The bundled dataset is intentionally small. It is a regression/evaluation boundary, not a claim of real-world model quality.
+The UI also exposes an explicit **Run evaluation** action. It is not executed automatically because a real provider can incur API calls and cost.
+
+The bundled dataset is intentionally small. It is a reproducible regression boundary, not a claim of real-world model quality.
 
 ## Human-in-the-loop invariant
 
@@ -174,7 +173,7 @@ A ticket can be drafted automatically, but a mock external ticket ID is created 
 ```text
 GET  /health
 POST /api/messages
-GET  /api/cases
+GET  /api/cases?status=&category=&limit=
 GET  /api/cases/{case_id}
 GET  /api/incidents
 GET  /api/audit
@@ -197,7 +196,7 @@ app/
 ├── knowledge.py     synthetic retrieval boundary
 ├── incidents.py     incident correlation orchestration
 ├── similarity.py    pluggable similarity boundary
-├── evaluation.py    synthetic evaluation runner
+├── evaluation.py    synthetic evaluation runner + metrics
 ├── ticketing.py     draft + approval gate
 ├── models.py        domain + audit models
 └── templates/       bilingual operations dashboard
@@ -218,20 +217,7 @@ tests/
 python -m pytest -q
 ```
 
-The suite verifies that:
-
-- conversational noise does not create a case;
-- severe issues create ticket drafts;
-- three related independent customers can trigger a potential incident;
-- no external ticket is created before approval;
-- approval is recorded in the audit trail;
-- case-detail data includes related workflow state;
-- telemetry aggregates provider calls;
-- cases and audit events survive a restart;
-- related issue descriptions score above unrelated descriptions;
-- the public bilingual evaluation set stays regression-tested.
-
-GitHub Actions runs the tests and a FastAPI import smoke check on every push and pull request.
+The suite verifies workflow safety, persistence, auditability, telemetry, similarity behavior, and the full public bilingual evaluation dataset. GitHub Actions also performs a FastAPI version/import smoke check on every push and pull request.
 
 ## Engineering decisions
 
@@ -245,13 +231,15 @@ GitHub Actions runs the tests and a FastAPI import smoke check on every push and
 
 **Similarity is replaceable.** Incident orchestration depends on a similarity interface rather than a hard-coded lexical algorithm.
 
+**Evaluation does not run silently.** In the UI it is user-triggered, so switching to a paid provider does not create surprise model calls.
+
 **Synthetic by construction.** No internal customer names, endpoints, credentials, prompts, production schemas, support conversations or proprietary business rules are included.
 
 ## Current version
 
-**v0.4** adds a pluggable similarity engine, local cosine similarity for incident correlation, a bilingual evaluation dataset, a reusable evaluation runner, `/api/evaluation`, and regression tests for similarity and triage quality.
+**v0.5** expands the bilingual evaluation set to 16 cases, adds per-language/per-category metrics and category confusion reporting, introduces filtered recent-case navigation, and surfaces evaluation directly in the operations dashboard.
 
-Next useful steps: optional embeddings-based similarity, richer evaluation metrics/confusion reporting, provider-specific cost configuration, and deeper case navigation.
+Next useful steps: optional embeddings-based similarity, provider-specific cost configuration, a larger adversarial evaluation set, and richer incident detail views.
 
 ## Related project
 
