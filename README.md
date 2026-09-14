@@ -13,7 +13,14 @@ A runnable, privacy-safe demonstration of an **AI support operations workflow**:
 - Persistent state and audit trail
 - CI-tested workflow, API, similarity, and evaluation behavior
 - HTML-escaped dynamic UI payloads and hardened Docker build context
+- Manual end-to-end QA completed for the v0.6 portfolio release
 - MIT licensed
+
+## Dashboard preview
+
+![AI Support Triage dashboard showing incident correlation and ticket drafts](docs/assets/dashboard-incident-demo.jpg)
+
+The screenshot shows the three-customer incident demo: three independent synthetic customers produce related `data_ingestion` cases, the workflow correlates them into one potential incident, and ticket creation remains behind explicit human approval.
 
 ## What it demonstrates
 
@@ -235,7 +242,7 @@ tests/
 └── test_evaluation.py
 ```
 
-## Tests and CI
+## Tests, CI, and manual QA
 
 ```bash
 python -m pytest -q
@@ -244,6 +251,16 @@ python -m pytest -q
 The suite covers workflow safety, persistence, auditability, telemetry, similarity behavior, the public bilingual evaluation dataset, API flows, 404 behavior, browser security headers, and escaping of dynamic message content.
 
 GitHub Actions runs the suite plus a FastAPI version/import smoke check on every push and pull request.
+
+Manual v0.6 QA was also completed against the dashboard:
+
+- noise / resolved-message flow: no case or ticket created;
+- authentication outage: case created, knowledge guidance retrieved, ticket stayed in draft;
+- explicit approval: draft converted into one mock approved ticket only after the button click;
+- three-customer incident demo: three related cases correlated into one potential incident;
+- evaluation runner: 100% pass rate on the bundled synthetic EN/RU dataset in deterministic mock mode;
+- RU/EN UI switching and reset flow;
+- XSS payload rendering: `<img src=x onerror=alert('XSS')>` displayed as text and did not execute.
 
 ## Engineering decisions
 
@@ -265,9 +282,9 @@ GitHub Actions runs the suite plus a FastAPI version/import smoke check on every
 
 **v0.6 — Portfolio Hardening**
 
-Adds API integration tests, dynamic response escaping for the dashboard, browser security headers, Docker build-context hardening, single-process concurrent case-ID protection, explicit deployment/security boundaries, and an MIT license.
+Adds API integration tests, dynamic response escaping for the dashboard, browser security headers, Docker build-context hardening, single-process concurrent case-ID protection, explicit deployment/security boundaries, an MIT license, a portfolio dashboard screenshot, and completed manual QA.
 
-The next step is not feature expansion. It is manual end-to-end verification, a final public-data/security sweep, and one clean dashboard screenshot for the portfolio.
+The next step is not feature expansion. It is keeping the demo stable and using it as a public, privacy-safe proof of AI support automation patterns.
 
 ## Related project
 
