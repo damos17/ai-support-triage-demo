@@ -197,6 +197,19 @@ This is still a **local synthetic demo**, not a production multi-user service. M
 
 See [`SECURITY.md`](SECURITY.md) for the explicit boundary.
 
+## Embedding the demo into another site
+
+Three optional environment variables let the dashboard run as a public, embeddable widget.
+Defaults keep the original behaviour: no theme, framing forbidden, unbounded state.
+
+| Variable | Effect |
+|---|---|
+| `DEMO_THEME` | Loads `app/theme/<name>.css` and serves it at `/theme/`. Unknown names are ignored. `damos` ships in the repo. |
+| `FRAME_ANCESTORS` | Space-separated origins allowed to embed the page (`frame-ancestors`). When set, `X-Frame-Options: DENY` is dropped. |
+| `DEMO_MAX_CASES` | Resets the shared demo state once this many cases exist, so a public instance stays bounded. |
+
+The `damos` theme bundles Science Gothic and Handjet (SIL Open Font License, see `app/theme/fonts/`).
+
 ## API
 
 ```text

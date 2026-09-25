@@ -4,6 +4,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from .evaluation import run_evaluation
 from .models import MessageIn
@@ -12,6 +13,17 @@ from .workflow import SupportWorkflow
 
 app = FastAPI(title="AI Support Triage Demo", version="0.6.0")
 workflow = SupportWorkflow()
+
+# Optional visual theme for embedding the demo into another site (e.g. DEMO_THEME=damos).
+DEMO_THEME = os.getenv("DEMO_THEME", "").strip()
+THEME_DIR = Path("app/theme")
+if DEMO_THEME and (THEME_DIR / f"{DEMO_THEME}.css").is_file():
+    app.mount("/theme", StaticFiles(directory=THEME_DIR), name="theme")
+else:
+    DEMO_THEME = ""
+
+# Space-separated origins allowed to embed the dashboard in an iframe. Default: nobody.
+FRAME_ANCESTORS = os.getenv("FRAME_ANCESTORS", "").strip() or "'none'"
 
 FAVICON_SVG = """<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 64 64\">
 <rect width=\"64\" height=\"64\" rx=\"14\" fill=\"#111b2e\"/>
@@ -28,11 +40,13 @@ def safe(payload):
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
+    if FRAME_ANCESTORS == "'none'":
+        response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     response.headers["Content-Security-Policy"] = (
-        "default-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
+        "default-src 'self'; object-src 'none'; base-uri 'none'; "
+        f"frame-ancestors {FRAME_ANCESTORS}; font-src 'self'; "
         "img-src 'self' data:; connect-src 'self'; style-src 'self' 'unsafe-inline'; "
         "script-src 'self' 'unsafe-inline'"
     )
@@ -123,5 +137,14 @@ def reset_demo():
 
 @app.get("/", response_class=HTMLResponse)
 def dashboard():
-    html = Path("app/templates/dashboard.html").read_text(encoding="utf-8")
-    return HTMLResponse(html.replace("v0.5", "v0.6"))
+    html = Path("app/templates/dashboard.html").read_text(encoding="utf-8").replace("v0.5", "v0.6")
+    if DEMO_THEME:
+        html = html.replace('<html lang="en">', f'<html lang="en" class="theme-{DEMO_THEME}">', 1)
+        html = html.replace(
+            "</head>",
+            f'<link rel="stylesheet" href="/theme/{DEMO_THEME}.css">\n'
+            "<script>try{if(!localStorage.getItem('triage_lang'))localStorage.setItem('triage_lang','ru')}catch(e){}</script>\n"
+            "</head>",
+            1,
+        )
+    return HTMLResponse(html)

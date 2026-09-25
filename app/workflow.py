@@ -1,3 +1,4 @@
+import os
 from threading import Lock
 from uuid import uuid4
 
@@ -21,6 +22,10 @@ class SupportWorkflow:
         self._case_id_lock = Lock()
 
     async def process(self, customer_id: str, text: str) -> dict:
+        # Public deployments share one state; DEMO_MAX_CASES keeps it bounded.
+        max_cases = int(os.getenv("DEMO_MAX_CASES", "0") or 0)
+        if max_cases and len(self.cases) >= max_cases:
+            self.reset()
         self._audit("message_received", "Incoming support message received", customer_id=customer_id)
         triage = await self.llm.triage(text)
         telemetry = dict(getattr(self.llm, "last_telemetry", {}) or {})
