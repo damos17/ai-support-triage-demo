@@ -91,3 +91,19 @@ class SQLiteStore:
         with self._connect() as conn:
             rows = conn.execute(f"SELECT payload FROM {table}").fetchall()
         return [json.loads(row["payload"]) for row in rows]
+
+
+class MemoryStore(SQLiteStore):
+    """Keeps nothing on disk: used for per-visitor sessions (DEMO_SESSIONS), state lives in the workflow."""
+
+    def __init__(self) -> None:
+        self.path = ":memory:"
+
+    def _upsert(self, table: str, key_name: str, key: str, payload: dict) -> None:
+        pass
+
+    def _all(self, table: str) -> Iterable[dict]:
+        return []
+
+    def clear(self) -> None:
+        pass

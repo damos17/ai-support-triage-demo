@@ -1,6 +1,11 @@
 import json
 import os
+import re
+import secrets
+import time
+from collections import OrderedDict
 from pathlib import Path
+from threading import Lock
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, Response
@@ -8,11 +13,44 @@ from fastapi.staticfiles import StaticFiles
 
 from .evaluation import run_evaluation
 from .models import MessageIn
+from .db import MemoryStore
 from .safety import escape_dynamic_text
 from .workflow import SupportWorkflow
 
 app = FastAPI(title="AI Support Triage Demo", version="0.6.0")
 workflow = SupportWorkflow()
+
+# Public deployments: DEMO_SESSIONS=1 gives every visitor a private in-memory state
+# (own cases, counters, incidents), identified by a random cookie. Default: one shared state.
+DEMO_SESSIONS = os.getenv("DEMO_SESSIONS", "").strip() in {"1", "true", "yes"}
+SESSION_COOKIE = "triage_sid"
+SESSION_TTL = int(os.getenv("DEMO_SESSION_TTL", "7200"))
+SESSION_MAX = int(os.getenv("DEMO_MAX_SESSIONS", "500"))
+_SID_RE = re.compile(r"^[A-Za-z0-9_-]{20,64}$")
+_sessions: "OrderedDict[str, tuple[float, SupportWorkflow]]" = OrderedDict()
+_sessions_lock = Lock()
+
+
+def _session_workflow(sid: str) -> SupportWorkflow:
+    now = time.time()
+    with _sessions_lock:
+        entry = _sessions.pop(sid, None)
+        # oldest sessions first: drop the expired ones and anything over the limit
+        while _sessions and (len(_sessions) >= SESSION_MAX or next(iter(_sessions.values()))[0] < now - SESSION_TTL):
+            _sessions.popitem(last=False)
+        if entry and entry[0] >= now - SESSION_TTL:
+            flow = entry[1]
+        else:
+            flow = SupportWorkflow(store=MemoryStore(), provider=workflow.llm)
+        _sessions[sid] = (now, flow)
+        return flow
+
+
+def wf(request: Request) -> SupportWorkflow:
+    """The workflow this request works with: the visitor's own one in session mode."""
+    if not DEMO_SESSIONS:
+        return workflow
+    return _session_workflow(request.state.sid)
 
 # Optional visual theme for embedding the demo into another site (e.g. DEMO_THEME=damos).
 DEMO_THEME = os.getenv("DEMO_THEME", "").strip()
@@ -38,7 +76,16 @@ def safe(payload):
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
+    new_sid = None
+    if DEMO_SESSIONS:
+        sid = request.cookies.get(SESSION_COOKIE, "")
+        if not _SID_RE.match(sid):
+            sid = new_sid = secrets.token_urlsafe(24)
+        request.state.sid = sid
     response = await call_next(request)
+    if new_sid:
+        secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
+        response.set_cookie(SESSION_COOKIE, new_sid, max_age=SESSION_TTL, httponly=True, samesite="lax", secure=secure)
     response.headers["X-Content-Type-Options"] = "nosniff"
     if FRAME_ANCESTORS == "'none'":
         response.headers["X-Frame-Options"] = "DENY"
@@ -64,17 +111,18 @@ def favicon():
 
 
 @app.post("/api/messages")
-async def process_message(message: MessageIn):
-    return safe(await workflow.process(message.customer_id, message.text))
+async def process_message(message: MessageIn, request: Request):
+    return safe(await wf(request).process(message.customer_id, message.text))
 
 
 @app.get("/api/cases")
 def cases(
+    request: Request,
     status: str | None = Query(default=None, max_length=40),
     category: str | None = Query(default=None, max_length=60),
     limit: int = Query(default=50, ge=1, le=200),
 ):
-    items = workflow.cases
+    items = wf(request).cases
     if status:
         items = [case for case in items if case.status == status]
     if category:
@@ -84,26 +132,26 @@ def cases(
 
 
 @app.get("/api/cases/{case_id}")
-def case_detail(case_id: str):
-    detail = workflow.case_detail(case_id)
+def case_detail(case_id: str, request: Request):
+    detail = wf(request).case_detail(case_id)
     if not detail:
         raise HTTPException(status_code=404, detail="Case not found")
     return safe(detail)
 
 
 @app.get("/api/incidents")
-def incidents():
-    return safe([incident.model_dump(mode="json") for incident in workflow.incidents])
+def incidents(request: Request):
+    return safe([incident.model_dump(mode="json") for incident in wf(request).incidents])
 
 
 @app.get("/api/audit")
-def audit(limit: int = Query(default=50, ge=1, le=200)):
-    return safe(workflow.audit(limit=limit))
+def audit(request: Request, limit: int = Query(default=50, ge=1, le=200)):
+    return safe(wf(request).audit(limit=limit))
 
 
 @app.get("/api/telemetry")
-def telemetry():
-    return safe(workflow.telemetry())
+def telemetry(request: Request):
+    return safe(wf(request).telemetry())
 
 
 @app.get("/api/evaluation")
@@ -112,8 +160,8 @@ async def evaluation():
 
 
 @app.get("/api/stats")
-def stats():
-    return workflow.stats()
+def stats(request: Request):
+    return wf(request).stats()
 
 
 @app.get("/api/scenarios")
@@ -123,15 +171,16 @@ def scenarios():
 
 
 @app.post("/api/tickets/{case_id}/approve")
-def approve_ticket(case_id: str):
-    if case_id not in workflow.tickets:
+def approve_ticket(case_id: str, request: Request):
+    current = wf(request)
+    if case_id not in current.tickets:
         raise HTTPException(status_code=404, detail="Ticket draft not found")
-    return safe(workflow.approve(case_id).model_dump(mode="json"))
+    return safe(current.approve(case_id).model_dump(mode="json"))
 
 
 @app.post("/api/reset")
-def reset_demo():
-    workflow.reset()
+def reset_demo(request: Request):
+    wf(request).reset()
     return {"status": "reset"}
 
 

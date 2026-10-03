@@ -2,6 +2,7 @@ import os
 from threading import Lock
 from uuid import uuid4
 
+from . import diagnostics
 from .db import SQLiteStore
 from .incidents import IncidentDetector
 from .knowledge import retrieve
@@ -49,11 +50,14 @@ class SupportWorkflow:
                 "case": None,
                 "ticket": None,
                 "incident": None,
+                "diagnostics": None,
                 "telemetry": telemetry,
             }
 
         kb = retrieve(triage.category)
-        escalate = triage.severity in {Severity.high, Severity.critical} or kb is None
+        # Logs and a read-only SQL check; evidence of a fault means engineering has to look.
+        diag = diagnostics.run(triage.category, customer_id)
+        escalate = triage.severity in {Severity.high, Severity.critical} or kb is None or bool(diag and diag["rows"])
 
         # Keep sequential demo case IDs unique for concurrent requests inside one
         # application process. A production multi-process deployment should move
@@ -80,6 +84,15 @@ class SupportWorkflow:
             customer_id=customer_id,
             metadata={"category": triage.category.value, "severity": triage.severity.value},
         )
+
+        if diag:
+            self._audit(
+                "diagnostics_run",
+                "Logs searched and read-only SQL check executed",
+                case_id=case_id,
+                customer_id=customer_id,
+                metadata={"rows": len(diag["rows"]), "finding": diag["finding"]["en"]},
+            )
 
         if kb:
             self._audit("knowledge_retrieved", "Knowledge guidance retrieved", case_id=case_id, customer_id=customer_id)
@@ -121,6 +134,7 @@ class SupportWorkflow:
             "case": case.model_dump(mode="json"),
             "ticket": ticket.model_dump(mode="json") if ticket else None,
             "incident": incident.model_dump(mode="json") if incident else None,
+            "diagnostics": diag,
             "telemetry": telemetry,
         }
 
